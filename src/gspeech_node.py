@@ -45,6 +45,7 @@ class GSpeech(object):
     self.api_key = _api_key
     self.lang = _lang
     self.sox_cmd = "sox -r 44100 -t coreaudio default recording.flac silence 1 0.1 1% 1 0.3 1%"
+    self.length_cmd = "soxi -D recording.flac" # returns length in seconds
     self.wget_cmd = ("wget -q -U \"Mozilla/5.0\" ") + \
         ("--post-file recording.flac ") + \
         ("--header=\"Content-Type: audio/x-flac; rate=44100\" -O - ") + \
@@ -52,6 +53,7 @@ class GSpeech(object):
         ("?output=json&lang={lang}&key={api_key}\"")
     self.wget_cmd = self.wget_cmd.format(api_key=self.api_key, lang=self.lang)
     self.sox_args = shlex.split(self.sox_cmd)
+    self.length_args = shlex.split(self.length_cmd)
     self.wget_args = shlex.split(self.wget_cmd)
     # start ROS node
     rospy.init_node('gspeech')
@@ -102,6 +104,9 @@ class GSpeech(object):
     """Do speech recognition"""
     while self.started:
       sox_p = subprocess.call(self.sox_args)
+      end_time = rospy.Time.now()
+      audio_len, _dummy_err = subprocess.Popen(self.length_args, stdout=subprocess.PIPE).communicate()
+      start_time = end_time - rospy.Duration(float(audio_len.strip()))
       wget_out, wget_err = subprocess.Popen(
         self.wget_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
       ).communicate()
@@ -121,8 +126,9 @@ class GSpeech(object):
           rospy.loginfo("confidence: {}".format(confidence))
 
         msg = SpeechStamped()
-        msg.header.stamp = rospy.Time.now()
+        msg.header.stamp = start_time
         msg.header.frame_id = "human_frame"
+        msg.duration = end_time - start_time
         msg.text = text
         msg.confidence = confidence
         self.pub_speech.publish(msg)
