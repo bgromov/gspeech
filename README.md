@@ -18,4 +18,4 @@ UPD: Fixed, now working with API v2, you need an API Key from  Google Developer 
 
 Usage
 -----
-`rosrun gspeech gspeech.py <API_KEY>`
+`rosrun gspeech gspeech_node.py <API_KEY> [LANG=en-us]`
