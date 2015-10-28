@@ -40,17 +40,18 @@ from std_srvs.srv import *
 class GSpeech(object):
   """Speech Recogniser using Google Speech API"""
 
-  def __init__(self, _api_key):
+  def __init__(self, _api_key, _lang):
     """Constructor"""
     # configure system commands
     self.api_key = _api_key
+    self.lang = _lang
     self.sox_cmd = "sox -r 44100 -t coreaudio default recording.flac silence 1 0.1 1% 1 0.3 1%"
     self.wget_cmd = ("wget -q -U \"Mozilla/5.0\" ") + \
         ("--post-file recording.flac ") + \
         ("--header=\"Content-Type: audio/x-flac; rate=44100\" -O - ") + \
         ("\"https://www.google.com/speech-api/v2/recognize") + \
-        ("?output=json&lang=en-us&key={api_key}\"")
-    self.wget_cmd = self.wget_cmd.format(api_key=self.api_key)
+        ("?output=json&lang={lang}&key={api_key}\"")
+    self.wget_cmd = self.wget_cmd.format(api_key=self.api_key, lang=self.lang)
     self.sox_args = shlex.split(self.sox_cmd)
     self.wget_args = shlex.split(self.wget_cmd)
     # start ROS node
@@ -133,8 +134,8 @@ def is_connected():
 
 def usage():
   """Print Usage"""
-  print("Usage:")
-  print("rosrun gspeech gspeech.py <API_KEY>")
+  print "Usage:"
+  print "rosrun gspeech gspeech.py <API_KEY> [LANG=en-us]"
 
 
 def main():
@@ -144,9 +145,13 @@ def main():
   if not is_connected():
     sys.exit("No Internet connection available")
   api_key = str(sys.argv[1])
-  speech = GSpeech(api_key)
+  if len(sys.argv) == 3:
+    lang = str(sys.argv[2])
+  else:
+    lang = "en-us" # default
+    print "Language is not specified. Using default:", lang
+  speech = GSpeech(api_key, lang)
   rospy.spin()
-
 
 if __name__ == '__main__':
   try:
