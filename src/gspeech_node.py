@@ -32,8 +32,7 @@
 import json, shlex, socket, subprocess, sys, threading
 import roslib; roslib.load_manifest('gspeech')
 import rospy
-from std_msgs.msg import String
-from std_msgs.msg import Int8
+from gspeech.msg import SpeechStamped
 import shlex,subprocess,os
 from std_srvs.srv import *
 
@@ -58,8 +57,7 @@ class GSpeech(object):
     rospy.init_node('gspeech')
     # configure ROS settings
     rospy.on_shutdown(self.shutdown)
-    self.pub_speech = rospy.Publisher('~speech', String, queue_size=10)
-    self.pub_confidence = rospy.Publisher('~confidence', Int8, queue_size=10)
+    self.pub_speech = rospy.Publisher('~speech', SpeechStamped, queue_size=10)
     self.srv_start = rospy.Service('~start', Empty, self.start)
     self.srv_stop = rospy.Service('~stop', Empty, self.stop)
     # run speech recognition
@@ -107,18 +105,27 @@ class GSpeech(object):
       wget_out, wget_err = subprocess.Popen(
         self.wget_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
       ).communicate()
+
+      # print wget_out
+      # print wget_err
+
       if not wget_err and len(wget_out) > 16:
         wget_out = wget_out.split('\n', 1)[1]
         a = json.loads(wget_out)['result'][0]
+        if 'transcript' in a['alternative'][0]:
+          text = a['alternative'][0]['transcript']
+          rospy.loginfo("text: {}".format(text))
         if 'confidence' in a['alternative'][0]:
           confidence = a['alternative'][0]['confidence']
           confidence = confidence * 100
-          self.pub_confidence.publish(confidence)
           rospy.loginfo("confidence: {}".format(confidence))
-        if 'transcript' in a['alternative'][0]:
-          data = a['alternative'][0]['transcript']
-          self.pub_speech.publish(String(data))
-          rospy.loginfo(String(data))
+
+        msg = SpeechStamped()
+        msg.header.stamp = rospy.Time.now()
+        msg.header.frame_id = "human_frame"
+        msg.text = text
+        msg.confidence = confidence
+        self.pub_speech.publish(msg)
 
 def is_connected():
   """Check if connected to Internet"""
