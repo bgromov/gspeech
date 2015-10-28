@@ -35,10 +35,7 @@ import rospy
 from std_msgs.msg import String
 from std_msgs.msg import Int8
 import shlex,subprocess,os
-cmd1='sox -r 16000 -t alsa default recording.flac silence 1 0.1 1% 1 1.5 1%'
-cmd2='wget -q -U "Mozilla/5.0" --post-file recording.flac --header="Content-Type: audio/x-flac; rate=16000" -O - "https://www.google.com/speech-api/v2/recognize?output=json&lang=en-us&key=yourkey"'
 from std_srvs.srv import *
-
 
 class GSpeech(object):
   """Speech Recogniser using Google Speech API"""
@@ -60,8 +57,8 @@ class GSpeech(object):
     rospy.init_node('gspeech')
     # configure ROS settings
     rospy.on_shutdown(self.shutdown)
-    self.pub_speech = rospy.Publisher('~speech', String)
-    self.pub_confidence = rospy.Publisher('~confidence', Int8)
+    self.pub_speech = rospy.Publisher('~speech', String, queue_size=10)
+    self.pub_confidence = rospy.Publisher('~confidence', Int8, queue_size=10)
     self.srv_start = rospy.Service('~start', Empty, self.start)
     self.srv_stop = rospy.Service('~stop', Empty, self.stop)
     # run speech recognition
@@ -94,33 +91,6 @@ class GSpeech(object):
         rospy.loginfo("gspeech is already stopped")
     return EmptyResponse()
 
-def speech():
-  rospy.init_node('gspeech')
-  pubs = rospy.Publisher('speech', String)
-  pubc = rospy.Publisher('confidence', Int8)
-  args2 = shlex.split(cmd2)
-  os.system('sox -r 16000 -t alsa default recording.flac silence 1 0.1 1% 1 1.5 1%')    
-  output,error = subprocess.Popen(args2,stdout = subprocess.PIPE, stderr= subprocess.PIPE).communicate()
-      
-  if not error and len(output)>16:
-    a = eval(output)
-    confidence= a['hypotheses'][0]['confidence']
-    confidence= confidence*100
-    data=a['hypotheses'][0]['utterance']
-    pubs.publish(String(data))
-    pubc.publish(confidence)
-    print String(data), confidence
-  
-  speech()    
- 
-  
-if __name__ == '__main__':
-  try:
-    speech()
-  except rospy.ROSInterruptException: pass
-  except KeyboardInterrupt:
-    sys.exit(1)
-   
   def shutdown(self):
     """Stop all system process before killing node"""
     self.started = False
@@ -149,7 +119,6 @@ if __name__ == '__main__':
           self.pub_speech.publish(String(data))
           rospy.loginfo(String(data))
 
-
 def is_connected():
   """Check if connected to Internet"""
   try:
@@ -161,7 +130,6 @@ def is_connected():
   except:
     pass
   return False
-
 
 def usage():
   """Print Usage"""

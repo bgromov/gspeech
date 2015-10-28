@@ -1,14 +1,10 @@
-<<<<<<< HEAD
-cmake_minimum_required(VERSION 2.8.3)
-include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
-=======
 # Catkin User Guide: http://www.ros.org/doc/groovy/api/catkin/html/user_guide/user_guide.html
 # Catkin CMake Standard: http://www.ros.org/doc/groovy/api/catkin/html/user_guide/standards.html
 cmake_minimum_required(VERSION 2.8.3)
 project(gspeech)
 # Load catkin and all dependencies required for this package
 # TODO: remove all from COMPONENTS that are not catkin packages.
-find_package(catkin REQUIRED COMPONENTS rospy)
+find_package(catkin REQUIRED COMPONENTS rospy std_msgs)
 
 # include_directories(include ${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 # CATKIN_MIGRATION: removed during catkin migration
@@ -16,7 +12,6 @@ find_package(catkin REQUIRED COMPONENTS rospy)
 
 # CATKIN_MIGRATION: removed during catkin migration
 # include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
->>>>>>> e6a999073b0a13e9398bd0fd24228e559b1210e8
 
 # Set the build type.  Options are:
 #  Coverage       : w/ debug symbols, w/o optimization, w/ code-coverage
