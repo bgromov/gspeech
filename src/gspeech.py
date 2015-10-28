@@ -44,7 +44,7 @@ class GSpeech(object):
     """Constructor"""
     # configure system commands
     self.api_key = _api_key
-    self.sox_cmd = "sox -r 44100 -t alsa default recording.flac silence 1 0.1 1% 1 1.5 1%"
+    self.sox_cmd = "sox -r 44100 -t coreaudio default recording.flac silence 1 0.1 1% 1 0.3 1%"
     self.wget_cmd = ("wget -q -U \"Mozilla/5.0\" ") + \
         ("--post-file recording.flac ") + \
         ("--header=\"Content-Type: audio/x-flac; rate=44100\" -O - ") + \
