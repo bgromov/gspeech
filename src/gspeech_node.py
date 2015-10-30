@@ -44,17 +44,23 @@ class GSpeech(object):
     # configure system commands
     self.api_key = _api_key
     self.lang = _lang
-    self.sox_cmd = "sox -r 44100 -t coreaudio default recording.flac silence 1 0.1 1% 1 0.3 1%"
+    self.actual_rate = 44100
+    self.sox_cmd = "sox -r 44100 -t coreaudio default recording.flac silence 1 0.05 1% 1 0.3 1%"
+    self.sox_args = shlex.split(self.sox_cmd)
     self.length_cmd = "soxi -D recording.flac" # returns length in seconds
+    self.length_args = shlex.split(self.length_cmd)
+    self.rate_cmd = "soxi -r recording.flac" # returns sampling rate in Hz
+    self.rate_args = shlex.split(self.rate_cmd)
     self.wget_cmd = ("wget -q -U \"Mozilla/5.0\" ") + \
         ("--post-file recording.flac ") + \
-        ("--header=\"Content-Type: audio/x-flac; rate=44100\" -O - ") + \
+        ("--header=\"Content-Type: audio/x-flac; rate={actual_rate}\" -O - ") + \
         ("\"https://www.google.com/speech-api/v2/recognize") + \
         ("?output=json&lang={lang}&key={api_key}\"")
-    self.wget_cmd = self.wget_cmd.format(api_key=self.api_key, lang=self.lang)
-    self.sox_args = shlex.split(self.sox_cmd)
-    self.length_args = shlex.split(self.length_cmd)
-    self.wget_args = shlex.split(self.wget_cmd)
+
+    ## Moved to do_recognition()
+    # self.wget_cmd = self.wget_cmd.format(actual_rate=self.actual_rate, api_key=self.api_key, lang=self.lang)
+    # self.wget_args = shlex.split(self.wget_cmd)
+
     # start ROS node
     rospy.init_node('gspeech')
     # configure ROS settings
@@ -107,6 +113,13 @@ class GSpeech(object):
       end_time = rospy.Time.now()
       audio_len, _dummy_err = subprocess.Popen(self.length_args, stdout=subprocess.PIPE).communicate()
       start_time = end_time - rospy.Duration(float(audio_len.strip()))
+
+      actual_rate, _dummy_err = subprocess.Popen(self.rate_args, stdout=subprocess.PIPE).communicate()
+      self.actual_rate = int(actual_rate.strip())
+
+      self.wget_cmd = self.wget_cmd.format(actual_rate=self.actual_rate, api_key=self.api_key, lang=self.lang)
+      self.wget_args = shlex.split(self.wget_cmd)
+
       wget_out, wget_err = subprocess.Popen(
         self.wget_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
       ).communicate()
