@@ -127,6 +127,8 @@ class GSpeech(object):
       # print wget_out
       # print wget_err
 
+      confidence = 0.0
+
       if not wget_err and len(wget_out) > 16:
         wget_out = wget_out.split('\n', 1)[1]
         a = json.loads(wget_out)['result'][0]
