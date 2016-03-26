@@ -68,6 +68,9 @@ class GSpeech(object):
     self.pub_speech = rospy.Publisher('~speech', SpeechStamped, queue_size=10)
     self.srv_start = rospy.Service('~start', Empty, self.start)
     self.srv_stop = rospy.Service('~stop', Empty, self.stop)
+
+    self.dur_threshold = rospy.get_param('~dur_threshold', 0.25)
+
     # run speech recognition
     self.started = True
     self.recog_thread = threading.Thread(target=self.do_recognition, args=())
@@ -113,6 +116,11 @@ class GSpeech(object):
       end_time = rospy.Time.now()
       audio_len, _dummy_err = subprocess.Popen(self.length_args, stdout=subprocess.PIPE).communicate()
       start_time = end_time - rospy.Duration(float(audio_len.strip()))
+
+      if float(audio_len) < self.dur_threshold:
+        rospy.logwarn("Recorded audio is too short ({}s < {}s). Ignoring".format(float(audio_len), self.dur_threshold))
+        continue
+
 
       actual_rate, _dummy_err = subprocess.Popen(self.rate_args, stdout=subprocess.PIPE).communicate()
       self.actual_rate = int(actual_rate.strip())
