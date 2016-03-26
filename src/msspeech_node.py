@@ -115,7 +115,7 @@ class MSSpeech(object):
 
     # configure ROS settings
     rospy.on_shutdown(self.shutdown)
-    self.pub_speech = rospy.Publisher('~speech', SpeechStamped, queue_size=10)
+    self.pub_speech = rospy.Publisher('speech', SpeechStamped, queue_size=10)
     self.srv_start = rospy.Service('~start', Empty, self.start)
     self.srv_stop = rospy.Service('~stop', Empty, self.stop)
 
