@@ -10,7 +10,7 @@
 # Date: 25 Mar 2016                                                                     #
 #########################################################################################
 
-import json, shlex, socket, subprocess, sys, threading
+import json, shlex, socket, subprocess, sys, threading, signal
 import uuid, platform, requests
 import roslib; roslib.load_manifest('gspeech')
 import rospy
@@ -145,6 +145,7 @@ class MSSpeech(object):
     if self.started:
         self.started = False
         if self.recog_thread.is_alive():
+            os.killpg(os.getpgid(self.sox_p.pid), signal.SIGTERM)
             self.recog_thread.join()
         rospy.loginfo("msspeech recognizer stopped")
     else:
@@ -155,6 +156,7 @@ class MSSpeech(object):
     """Stop all system process before killing node"""
     self.started = False
     if self.recog_thread.is_alive():
+      os.killpg(os.getpgid(self.sox_p.pid), signal.SIGTERM)
       self.recog_thread.join()
     self.srv_start.shutdown()
     self.srv_stop.shutdown()
@@ -162,20 +164,21 @@ class MSSpeech(object):
   def do_recognition(self):
     """Do speech recognition"""
     while self.started:
-      sox_p = subprocess.Popen(self.sox_args, stdout=subprocess.PIPE)
-      soxconv_out = subprocess.Popen(self.soxconv_args, stdin=sox_p.stdout, stdout=subprocess.PIPE).communicate()[0]
-      sox_p.stdout.close()
+      self.sox_p = subprocess.Popen(self.sox_args, stdout=subprocess.PIPE, preexec_fn=os.setsid)
+      soxconv_out = subprocess.Popen(self.soxconv_args, stdin=self.sox_p.stdout, stdout=subprocess.PIPE, preexec_fn=os.setsid).communicate()[0]
+      self.sox_p.stdout.close()
 
       end_time = rospy.Time.now()
-      audio_len, _dummy_err = subprocess.Popen(self.length_args, stdout=subprocess.PIPE).communicate()
+      audio_len, _dummy_err = subprocess.Popen(self.length_args, stdout=subprocess.PIPE, preexec_fn=os.setsid).communicate()
       start_time = end_time - rospy.Duration(float(audio_len.strip()))
 
       if float(audio_len) < self.dur_threshold:
         rospy.logwarn("Recorded audio is too short ({}s < {}s). Ignoring".format(float(audio_len), self.dur_threshold))
         continue
 
-      actual_rate, _dummy_err = subprocess.Popen(self.rate_args, stdout=subprocess.PIPE).communicate()
+      actual_rate, _dummy_err = subprocess.Popen(self.rate_args, stdout=subprocess.PIPE, preexec_fn=os.setsid).communicate()
       self.actual_rate = int(actual_rate.strip())
+
 
       self.querystring['requestid'] = self.querystring['requestid'].format(request_id = self.request_id)
       self.headers['content-type'] = self.headers['content-type'].format(actual_rate = self.actual_rate)
@@ -190,14 +193,15 @@ class MSSpeech(object):
         data    = open('recording.wav', 'rb')
       )
 
-      #print(response.json()['header']['lexical'])
+      # print(response.text)
 
       confidence = 0.0
 
       if response.status_code == 200 and  response.json()['header']['status'] == 'success':
         a = response.json()
         if 'lexical' in a['results'][0]:
-          text = a['results'][0]['lexical']
+          # text = a['results'][0]['lexical']
+          text = a['results'][0]['name']
           rospy.loginfo("text: {}".format(text))
         if 'confidence' in a['results'][0]:
           confidence = float(a['results'][0]['confidence'])
