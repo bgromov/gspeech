@@ -10,7 +10,7 @@
 # Date: 25 Mar 2016                                                                     #
 #########################################################################################
 
-import json, shlex, socket, subprocess, sys, threading, signal
+import json, shlex, socket, subprocess, sys, threading, signal, tempfile
 import uuid, platform, requests
 import roslib; roslib.load_manifest('gspeech')
 import rospy
@@ -63,8 +63,9 @@ class MSSpeech(object):
   def __init__(self, _api_key, _lang):
     """Constructor"""
 
-    # generate random UUID for each request
-    self.request_id = uuid.uuid4()
+    # generate random UUID for each request (moved to do_recognition())
+    # self.request_id = uuid.uuid4()
+
     # generate persistent UUID based on the host's name
     self.instance_id = uuid.uuid5(uuid.NAMESPACE_URL, platform.node())
     self.app_id = "D4D52672-91D7-4C74-8AD8-42B1D98141A5" # Microsoft pre-defined
@@ -79,13 +80,9 @@ class MSSpeech(object):
     self.sox_args = shlex.split(self.sox_cmd)
 
     # this command will be piped from previous one
-    self.soxconv_cmd = "sox -p -r 16000 -b 16 -c 1 recording.wav"
-    self.soxconv_args = shlex.split(self.soxconv_cmd)
-
-    self.length_cmd = "soxi -D recording.wav" # returns length in seconds
-    self.length_args = shlex.split(self.length_cmd)
-    self.rate_cmd = "soxi -r recording.wav" # returns sampling rate in Hz
-    self.rate_args = shlex.split(self.rate_cmd)
+    self.soxconv_cmd = "sox -p -r 16000 -b 16 -c 1 {filename}"
+    self.length_cmd = "soxi -D {filename}" # returns length in seconds
+    self.rate_cmd = "soxi -r {filename}" # returns sampling rate in Hz
 
     # Speech API service
     self.url = "https://speech.platform.bing.com/recognize"
@@ -123,18 +120,22 @@ class MSSpeech(object):
 
     # run speech recognition
     self.started = True
-    self.recog_thread = threading.Thread(target=self.do_recognition, args=())
-    self.recog_thread.start()
+    self.record_thread = threading.Thread(target=self.do_record, args=())
+    self.record_thread.start()
+
+    # recognition threads list
+    self.lock = threading.Lock()
+    self.threads_list = []
 
   def start(self, req):
     """Start speech recognition"""
     if not self.started:
       self.started = True
-      if not self.recog_thread.is_alive():
-        self.recog_thread = threading.Thread(
-          target=self.do_recognition, args=()
+      if not self.record_thread.is_alive():
+        self.record_thread = threading.Thread(
+          target=self.do_record, args=()
         )
-        self.recog_thread.start()
+        self.record_thread.start()
       rospy.loginfo("msspeech recognizer started")
     else:
       rospy.loginfo("msspeech is already running")
@@ -144,9 +145,9 @@ class MSSpeech(object):
     """Stop speech recognition"""
     if self.started:
         self.started = False
-        if self.recog_thread.is_alive():
+        if self.record_thread.is_alive():
             os.killpg(os.getpgid(self.sox_p.pid), signal.SIGTERM)
-            self.recog_thread.join()
+            self.record_thread.join()
         rospy.loginfo("msspeech recognizer stopped")
     else:
         rospy.loginfo("msspeech is already stopped")
@@ -155,15 +156,22 @@ class MSSpeech(object):
   def shutdown(self):
     """Stop all system process before killing node"""
     self.started = False
-    if self.recog_thread.is_alive():
+    if self.record_thread.is_alive():
       os.killpg(os.getpgid(self.sox_p.pid), signal.SIGTERM)
-      self.recog_thread.join()
+      self.record_thread.join()
     self.srv_start.shutdown()
     self.srv_stop.shutdown()
 
-  def do_recognition(self):
+  def do_record(self):
     """Do speech recognition"""
     while self.started:
+      with tempfile.NamedTemporaryFile(prefix='gspeech', suffix='.wav', delete=False) as tmpfile:
+        temp_file_name = tmpfile.name
+
+      self.soxconv_args = shlex.split(self.soxconv_cmd.format(filename=temp_file_name))
+      self.length_args = shlex.split(self.length_cmd.format(filename=temp_file_name))
+      self.rate_args = shlex.split(self.rate_cmd.format(filename=temp_file_name))
+
       self.sox_p = subprocess.Popen(self.sox_args, stdout=subprocess.PIPE, preexec_fn=os.setsid)
       soxconv_out = subprocess.Popen(self.soxconv_args, stdin=self.sox_p.stdout, stdout=subprocess.PIPE, preexec_fn=os.setsid).communicate()[0]
       self.sox_p.stdout.close()
@@ -177,44 +185,74 @@ class MSSpeech(object):
         continue
 
       actual_rate, _dummy_err = subprocess.Popen(self.rate_args, stdout=subprocess.PIPE, preexec_fn=os.setsid).communicate()
-      self.actual_rate = int(actual_rate.strip())
 
-
-      self.querystring['requestid'] = self.querystring['requestid'].format(request_id = self.request_id)
-      self.headers['content-type'] = self.headers['content-type'].format(actual_rate = self.actual_rate)
-
-      # Since token is updated automatically it should always be valid
-      self.headers['authorization'] = self.headers['authorization'].format(token = self.oauth.token)
-
-      response = requests.request("POST",
-        self.url, # "http://httpbin.org/post",
-        headers = self.headers,
-        params  = self.querystring,
-        data    = open('recording.wav', 'rb')
+      th = threading.Thread(
+        target=self.do_recognition,
+        args=(temp_file_name, int(actual_rate.strip()), start_time, end_time)
       )
 
-      # print(response.text)
+      # lock
+      self.lock.acquire()
+      # modify the list
+      try:
+        self.threads_list.append(th)
+        print "Threads: ", self.threads_list
+      finally:
+        # release
+        self.lock.release()
 
-      confidence = 0.0
+      # start the thread
+      self.threads_list[-1].start()
 
-      if response.status_code == 200 and  response.json()['header']['status'] == 'success':
-        a = response.json()
-        if 'lexical' in a['results'][0]:
-          # text = a['results'][0]['lexical']
-          text = a['results'][0]['name']
-          rospy.loginfo("text: {}".format(text))
-        if 'confidence' in a['results'][0]:
-          confidence = float(a['results'][0]['confidence'])
-          confidence = confidence * 100
-          rospy.loginfo("confidence: {}".format(confidence))
+  def do_recognition(self, fname, actual_rate, start_time, end_time):
+    request_id = uuid.uuid4()
+    self.querystring['requestid'] = self.querystring['requestid'].format(request_id = request_id)
+    self.headers['content-type'] = self.headers['content-type'].format(actual_rate = actual_rate)
 
-        msg = SpeechStamped()
-        msg.header.stamp = start_time
-        msg.header.frame_id = "human_frame"
-        msg.duration = end_time - start_time
-        msg.text = text
-        msg.confidence = confidence
-        self.pub_speech.publish(msg)
+    # Since token is updated automatically it should always be valid
+    self.headers['authorization'] = self.headers['authorization'].format(token = self.oauth.token)
+
+    response = requests.request("POST",
+      self.url, # "http://httpbin.org/post",
+      headers = self.headers,
+      params  = self.querystring,
+      data    = open(fname, 'rb')
+    )
+
+    os.unlink(fname)
+
+    # print(response.text)
+
+    confidence = 0.0
+
+    if response.status_code == 200 and  response.json()['header']['status'] == 'success':
+      a = response.json()
+      if 'lexical' in a['results'][0]:
+        # text = a['results'][0]['lexical']
+        text = a['results'][0]['name']
+        rospy.loginfo("text: {}".format(text))
+      if 'confidence' in a['results'][0]:
+        confidence = float(a['results'][0]['confidence'])
+        confidence = confidence * 100
+        rospy.loginfo("confidence: {}".format(confidence))
+
+      msg = SpeechStamped()
+      msg.header.stamp = start_time
+      msg.header.frame_id = "human_frame"
+      msg.duration = end_time - start_time
+      msg.text = text
+      msg.confidence = confidence
+      self.pub_speech.publish(msg)
+
+    # lock
+    self.lock.acquire()
+    try:
+      # modify the list
+      self.threads_list.remove(threading.currentThread())
+      print "Threads: ", self.threads_list
+    finally:
+      # release
+      self.lock.release()
 
 def is_connected():
   """Check if connected to Internet"""
