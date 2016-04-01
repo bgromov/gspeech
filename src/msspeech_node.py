@@ -196,7 +196,6 @@ class MSSpeech(object):
       # modify the list
       try:
         self.threads_list.append(th)
-        print "Threads: ", self.threads_list
       finally:
         # release
         self.lock.release()
@@ -249,7 +248,6 @@ class MSSpeech(object):
     try:
       # modify the list
       self.threads_list.remove(threading.currentThread())
-      print "Threads: ", self.threads_list
     finally:
       # release
       self.lock.release()
