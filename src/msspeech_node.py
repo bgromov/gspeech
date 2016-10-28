@@ -117,6 +117,7 @@ class MSSpeech(object):
     self.srv_stop = rospy.Service('~stop', Empty, self.stop)
 
     self.dur_threshold = rospy.get_param('~dur_threshold', 0.25)
+    self.frame_id = rospy.get_param('~frame_id', 'human_footprint')
 
     # run speech recognition
     self.started = True
@@ -237,7 +238,7 @@ class MSSpeech(object):
 
       msg = SpeechStamped()
       msg.header.stamp = start_time
-      msg.header.frame_id = "human_frame"
+      msg.header.frame_id = self.frame_id
       msg.duration = end_time - start_time
       msg.text = text
       msg.confidence = confidence
